@@ -7,7 +7,11 @@
 //
 
 #import "MZBluetoothManager.h"
-#import <UIKit/UIKit.h>
+#import "NSObject+Tool.h"
+
+#define GameTag  @"MZ2018"  //用来标记搜索到的蓝牙设备是否是游戏设备
+#define RemoveTag @"Remove" //用来标记房主离开房间，房间删除
+
 @implementation MZBluetoothManager
 {
     //外设管理中心
@@ -22,11 +26,17 @@
     CBCentralManager * _centralManager;
     //要连接的外设
     CBPeripheral * _peripheral;
+    //房间名称
+    NSString * _roomName;
     //要交互的外设属性
     CBCharacteristic * _centralReadChara;
     CBCharacteristic * _centralWriteChara;
-    //开始游戏的回调，告知先手与后手信息
-    void(^block)(BOOL first);
+    
+    //搜索到房间的回调
+    void(^serachGameRoomCallBack)(NSArray<MZGameRoomModel *> *rooms);
+    
+    //搜索到的房间名称
+    NSMutableArray * _rooms;
 }
 
 +(instancetype)shareManager {
@@ -40,6 +50,8 @@
 
 //实现创建游戏的方法
 - (void)creatGameWithName:(NSString *)name block:(void (^)(BOOL))finish {
+    [_centralManager stopScan];
+    
     if (_peripheralManager==nil) {
         //初始化服务
         _ser = [[CBMutableService alloc] initWithType:[CBUUID UUIDWithString:@"68753A44-4D6F-1226-9C60-0050E4C00067"] primary:YES];
@@ -50,11 +62,13 @@
         _ser.characteristics = @[_readChara,_writeChara];
         _peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)];
     }
-    
+    [_peripheralManager stopAdvertising];
+    //记录房间名称
+    _roomName = [NSString stringWithFormat:@"%@+%@",GameTag,name];
     //设置为房主
     _isCentral = YES;
     //开始广播广告
-    [_peripheralManager startAdvertising:@{CBAdvertisementDataLocalNameKey:@"WUZIGame"}];
+    [_peripheralManager startAdvertising:@{CBAdvertisementDataLocalNameKey:_roomName}];
     finish(YES);
 }
 
@@ -65,7 +79,7 @@
         //添加服务
         [_peripheralManager addService:_ser];
         //开始广播广告
-        [_peripheralManager startAdvertising:@{CBAdvertisementDataLocalNameKey:@"WUZIGame"}];
+        [_peripheralManager startAdvertising:@{CBAdvertisementDataLocalNameKey:_roomName}];
     } else {
         //弹框提示
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -76,8 +90,12 @@
 
 //弹提示框
 - (void)showAlert {
-    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"温馨提示" message:@"请确保您的蓝牙可用" delegate:nil cancelButtonTitle:@"确定" otherButtonTitles:nil, nil];
-    [alert show];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"温馨提示" message:@"请确保您的蓝牙可用" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *confirmAction = [UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        
+    }];
+    [alert addAction:confirmAction];
+    [[self currentViewController] presentViewController:alert animated:YES completion:nil];
 }
 
 
@@ -105,17 +123,32 @@
     });
 }
 
-
+- (void)peripheralManagerDidStartAdvertising:(CBPeripheralManager *)peripheral error:(NSError *)error {
+    NSLog(@"开始广播");
+}
 
 /********************************加入游戏***********************************/
-- (void)searchGame {
+
+//作为游戏加入者查找附近的游戏
+- (void)searchGameRoomCallBack:(void(^)(NSArray<MZGameRoomModel *> *rooms)) result {
     if (_centralManager == nil) {
         _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)];
     }
-//    else {
-        [_centralManager scanForPeripheralsWithServices:nil options:nil];
-        _isCentral = NO;
-//    }
+    if (_rooms == nil) {
+        _rooms = [NSMutableArray array];
+    }
+    [_rooms removeAllObjects];
+
+    serachGameRoomCallBack = result;
+    [_centralManager scanForPeripheralsWithServices:nil options:nil];
+}
+
+//加入游戏
+- (void)joinToTheGameWithPeripheral:(CBPeripheral *)peripheral {
+    //保存此设备
+    _peripheral = peripheral;
+    //进行连接
+    [_centralManager connectPeripheral:peripheral options:nil];
 }
 
 //设备硬件检测状态回调的方法，可用后开始扫描设备
@@ -129,11 +162,33 @@
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary<NSString *,id> *)advertisementData RSSI:(NSNumber *)RSSI {
     //获取设备的名称或者广告中的相应字段来匹配
     NSString *name = [advertisementData objectForKey:CBAdvertisementDataLocalNameKey];
-    if ([name isEqualToString:@"WUZIGame"]) {
-        //保存此设备
-        _peripheral = peripheral;
-        //进行连接
-        [_centralManager connectPeripheral:peripheral options:nil];
+    if ([name hasPrefix:GameTag]) {
+        for (MZGameRoomModel *model in _rooms) {
+            //防止重复添加房间
+            if ([model.peripheral.identifier.UUIDString isEqualToString:peripheral.identifier.UUIDString]) {
+                return;
+            }
+        }
+        MZGameRoomModel *model = [[MZGameRoomModel alloc] init];
+        model.roomName = [name substringFromIndex:GameTag.length+1];
+        model.peripheral = peripheral;
+        [_rooms addObject:model];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            serachGameRoomCallBack(_rooms);
+        });
+    } else if ([name hasPrefix:RemoveTag]) {
+        if (name.length>6) {
+            NSString *roomName = [name substringFromIndex:6];
+            for (int i=0; i<_rooms.count; i++) {
+                MZGameRoomModel *model = _rooms[i];
+                if ([roomName isEqualToString:[NSString stringWithFormat:@"%@+%@",GameTag,model.roomName]]) {
+                    [_rooms removeObject:model];
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        serachGameRoomCallBack(_rooms);
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -141,23 +196,27 @@
 - (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral {
     NSLog(@"连接成功");
     [_centralManager stopScan];
-    if ([self.delegate respondsToSelector:@selector(searchGameSuccess)]) {
-        [self.delegate searchGameSuccess];
-    }
     //设置代理与搜索外设中的服务
     [peripheral setDelegate:self];
     [peripheral discoverServices:nil];
 }
 
 - (void)centralManager:(CBCentralManager *)central didFailToConnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
-    NSLog(@"%@",error);
+    if ([self.delegate respondsToSelector:@selector(joinToGameFailure)]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.delegate joinToGameFailure];
+        });
+    }
 }
 
 //连接断开
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
     NSLog(@"断开连接");
-    [_centralManager connectPeripheral:peripheral options:nil];
+//    [_centralManager connectPeripheral:peripheral options:nil];
 }
+
+
+#pragma mark -CBPeripheralDelegate
 
 //发现服务后的回调方法
 - (void)peripheral:(CBPeripheral *)peripheral didDiscoverServices:(NSError *)error {
@@ -185,6 +244,12 @@
             _centralWriteChara = chara;
         }
     }
+    _isCentral = NO;
+    if ([self.delegate respondsToSelector:@selector(joinToGameSuccess)]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.delegate joinToGameSuccess];
+        });
+    }
 }
 
 //所监听的特征值更新时回调的方法
@@ -201,7 +266,25 @@
     if (!_isCentral) {
         [_centralManager cancelPeripheralConnection:_peripheral];
         [_peripheral setNotifyValue:NO forCharacteristic:_centralReadChara];
+        _peripheral = nil;
+        _roomName = nil;
     }
+}
+
+//开始广播
+- (void)startAdvitise {
+    [_peripheralManager startAdvertising:@{CBAdvertisementDataLocalNameKey:_roomName}];
+}
+
+//停止广播
+- (void)stopAdvitise {
+    [_peripheralManager stopAdvertising];
+}
+
+//房主通知其他用户该房间已移除
+- (void)advitisTheRoomRemoved {
+    [_peripheralManager stopAdvertising];
+    [_peripheralManager startAdvertising:@{CBAdvertisementDataLocalNameKey:[NSString stringWithFormat:@"%@%@",RemoveTag,_roomName]}];
 }
 
 - (void)writeData:(NSString *)data {
@@ -214,31 +297,5 @@
         [_peripheral writeValue:[data dataUsingEncoding:NSUTF8StringEncoding] forCharacteristic:_centralWriteChara type:CBCharacteristicWriteWithoutResponse];
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @end

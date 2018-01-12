@@ -11,12 +11,21 @@
 #import "MZGameRoomCell.h"
 #import "MZGamePlayVC.h"
 #import "MZBluetoothManager.h"
+#import "MBProgressHUD+MJ.h"
 @interface MZGameRoomVC ()<UICollectionViewDelegate,UICollectionViewDataSource,MZBluetoothManagerDelegate>
 @property(nonatomic,strong)UICollectionView *collectionView;
-@property(nonatomic,strong)NSMutableArray *gameRooms;
+@property(nonatomic,strong)NSArray *gameRooms;
+@property(nonatomic,copy)NSString *roomName;
 @end
 
 @implementation MZGameRoomVC
+
+- (NSArray *)gameRooms {
+    if (!_gameRooms) {
+        _gameRooms = [NSArray array];
+    }
+    return _gameRooms;
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -25,11 +34,6 @@
     
     UIBarButtonItem *backItem = [[UIBarButtonItem alloc] initWithTitle:@"" style:UIBarButtonItemStylePlain target:nil action:nil];
     self.navigationItem.backBarButtonItem = backItem;
-    
-    self.gameRooms = [[NSMutableArray alloc] init];
-    MZGameRoomModel *model = [[MZGameRoomModel alloc] init];
-    model.roomName = @"666";
-    [self.gameRooms addObject:model];
     
     //菜单列表，collectionView
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
@@ -46,20 +50,57 @@
 
     __weak typeof(self)weakSelf = self;
     MZButton *addDeviceBtn = [[MZButton alloc] initWithFrame:CGRectMake(0, 0, 40, 40) andNormalTitle:nil andSelectedTitle:nil andTitlteColor:nil andNBImageName:@"btn_添加设备_n" andHBImageName:@"btn_添加设备_p" andSBName:nil andClickedBlock:^(MZButton *sender) {
-        [weakSelf addGameRoom];
+        [weakSelf createGameRoom];
     }];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:addDeviceBtn];
 }
 
-- (void)addGameRoom {
+- (void)createGameRoom {
     __weak typeof(self)weakSelf = self;
-    [[MZBluetoothManager shareManager] creatGameWithName:@"666" block:^(BOOL first) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            MZGamePlayVC *vc = [[MZGamePlayVC alloc] init];
-            vc.model = self.gameRooms[0];
-            vc.isMeStep = YES;
-            [weakSelf.navigationController pushViewController:vc animated:YES];
-        });
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"创建房间" message:@"游戏房间名称" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"请输入房间名称";
+        textField.textAlignment = NSTextAlignmentCenter;
+    }];
+    UIAlertAction *confirmAction = [UIAlertAction actionWithTitle:@"确认" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *name = [[[alert textFields] firstObject] text];
+        if (name.length == 0) {
+            [MBProgressHUD showError:@"房间名称不能为空"];
+            return ;
+        }
+        for (MZGameRoomModel *model in self.gameRooms) {
+            if ([model.roomName isEqualToString:name]) {
+                [MBProgressHUD showError:@"已存在相同的房间名"];
+                return;
+            }
+        }
+        [[MZBluetoothManager shareManager] creatGameWithName:name block:^(BOOL first) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                MZGamePlayVC *vc = [[MZGamePlayVC alloc] init];
+                vc.roomName = name;
+                vc.isMeStep = YES;
+                [weakSelf.navigationController pushViewController:vc animated:YES];
+            });
+        }];
+    }];
+    [alert addAction:confirmAction];
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        
+    }];
+    [alert addAction:cancelAction];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.gameRooms = nil;
+    [self.collectionView reloadData];
+    MZBluetoothManager *manager = [MZBluetoothManager shareManager];
+    manager.delegate = self;
+    __weak typeof(self)weakSelf = self;
+    [manager searchGameRoomCallBack:^(NSArray<MZGameRoomModel *> *rooms) {
+        weakSelf.gameRooms = rooms;
+        [weakSelf.collectionView reloadData];
     }];
 }
 
@@ -86,22 +127,27 @@
 #pragma mark --UICollectionViewDelegate
 
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
-    MZBluetoothManager *manager = [MZBluetoothManager shareManager];
-    manager.delegate = self;
-    [manager searchGame];
+    MZGameRoomModel *model = self.gameRooms[indexPath.row];
+    self.roomName = model.roomName;
+    [[MZBluetoothManager shareManager] joinToTheGameWithPeripheral:model.peripheral];
 }
 
-- (void)searchGameSuccess {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        MZGamePlayVC *vc = [[MZGamePlayVC alloc] init];
-        vc.model = self.gameRooms[0];
-        vc.isMeStep = NO;
-        [self.navigationController pushViewController:vc animated:YES];
-    });
+#pragma mark -MZBluetoothManagerDelegate
+- (void)joinToGameSuccess {
+    [[MZBluetoothManager shareManager] writeData:[NSString stringWithFormat:@"beginGame%@",[[UIDevice currentDevice] name]]];
+    for (MZGameRoomModel *model in self.gameRooms) {
+        if ([model.roomName isEqualToString:self.roomName]) {
+            [[MZBluetoothManager shareManager] setCompetitor:model.peripheral.name];
+        }
+    }
+    MZGamePlayVC *vc = [[MZGamePlayVC alloc] init];
+    vc.roomName = self.roomName;
+    vc.isMeStep = NO;
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
-- (void)getData:(NSString *)data {
-    NSLog(@"%@",data);
+- (void)joinToGameFailure {
+    [MBProgressHUD showError:@"进入游戏失败"];
 }
 
 @end

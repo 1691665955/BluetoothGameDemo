@@ -7,9 +7,15 @@
 //
 
 #import <Foundation/Foundation.h>
-
+#import <CoreBluetooth/CoreBluetooth.h>
 @interface MZGameRoomModel : NSObject
-
+/**
+ 房间名称
+ */
 @property(nonatomic,copy)NSString *roomName;
 
+/**
+ 外设信息
+ */
+@property(nonatomic,strong)CBPeripheral *peripheral;
 @end

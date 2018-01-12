@@ -7,8 +7,7 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "MZGameRoomModel.h"
 @interface MZGamePlayVC : UIViewController
-@property(nonatomic,strong)MZGameRoomModel *model;
+@property(nonatomic,copy)NSString *roomName;
 @property(nonatomic,assign)BOOL isMeStep;
 @end

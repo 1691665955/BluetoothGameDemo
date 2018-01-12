@@ -19,6 +19,14 @@
 @property(nonatomic,copy)NSString *lastKey;
 
 @property(nonatomic,assign)BOOL isFinished;
+
+@property(nonatomic,strong)MZLabel *blackPlayerLB;
+@property(nonatomic,strong)MZLabel *blackChessCountLB;
+@property(nonatomic,strong)MZLabel *whitePlayerLB;
+@property(nonatomic,strong)MZLabel *whiteChessCountLB;
+@property(nonatomic,strong)MZLabel *resultLB;
+
+@property(nonatomic,assign)BOOL hasFriendJoined;
 @end
 
 @implementation MZGamePlayVC
@@ -26,18 +34,61 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor whiteColor];
-    self.title = self.model.roomName;
+    self.title = self.roomName;
     self.chessDic = [[NSMutableDictionary alloc] init];
-    [self drawBackground];
     self.isWhiteChess = !self.isMeStep;
-    self.chessView.userInteractionEnabled = self.isMeStep;
+    [self drawBackground];
     [[MZBluetoothManager shareManager] setDelegate:self];
+    if (self.isWhiteChess) {
+        [MBProgressHUD showError:@"游戏开始"];
+    }
+    
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.contentEdgeInsets = UIEdgeInsetsMake(0, -15, 0, 0);
+    [btn setImage:[UIImage imageNamed:@"btn_返回_n"] forState:UIControlStateNormal];
+    [btn setImage:[UIImage imageNamed:@"btn_返回_p"] forState:UIControlStateHighlighted];
+    [btn addTarget:self action:@selector(leftBarItemClicked) forControlEvents:UIControlEventTouchUpInside];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:btn];
+}
+
+- (void)leftBarItemClicked {
+    if ([[MZBluetoothManager shareManager] isCentral] && !self.hasFriendJoined) {
+        [[MZBluetoothManager shareManager] advitisTheRoomRemoved];
+        [self back];
+        return;
+    }
+    if (self.isFinished) {
+        [[MZBluetoothManager shareManager] writeData:@"leaveRoom"];
+        [self back];
+        [self performSelector:@selector(disConnect) withObject:nil afterDelay:1.0f];
+    } else {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"该局输赢未定，请问您是否确认离开房间？" preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"确认" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [[MZBluetoothManager shareManager] writeData:@"leaveRoom"];
+            if (![[MZBluetoothManager shareManager] isCentral]) {
+                [[MZBluetoothManager shareManager] disConnect];
+            }
+            [self.navigationController popViewControllerAnimated:YES];
+        }];
+        [alert addAction:okAction];
+        UIAlertAction *noAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            
+        }];
+        [alert addAction:noAction];
+        [self presentViewController:alert animated:YES completion:nil];
+    }
+}
+
+- (void)disConnect {
+    if (![[MZBluetoothManager shareManager] isCentral]) {
+        [[MZBluetoothManager shareManager] disConnect];
+    }
 }
 
 //初始化棋盘
 - (void)drawBackground {
     
-    UIView *bgView = [[UIView alloc] initWithFrame:CGRectMake(10, 100, SCREEN_W-20, SCREEN_W-20)];
+    UIView *bgView = [[UIView alloc] initWithFrame:CGRectMake(10, 80, SCREEN_W-20, SCREEN_W-20)];
     bgView.backgroundColor = [UIColor orangeColor];
     bgView.userInteractionEnabled = YES;
     [self.view addSubview:bgView];
@@ -50,9 +101,41 @@
     [self.view addSubview:backBtn];
     
     MZButton *resetBtn = [[MZButton alloc] initWithFrame:CGRectMake(SCREEN_W-160*SCALE, CGRectGetMaxY(bgView.frame)+30*SCALE, 80*SCALE, 50*SCALE) andNormalTitle:@"重开" andSelectedTitle:nil andTitlteColor:[UIColor blackColor] andBackgroundColor:[UIColor orangeColor] andClickedBlock:^(MZButton *sender) {
-        [weakSelf resetMatch];
+        [weakSelf requestResetMatch];
     }];
     [self.view addSubview:resetBtn];
+    
+    //黑子方信息
+    MZLabel *blackPlayerTipsLB = [[MZLabel alloc] initWithFrame:CGRectMake(20*SCALE, CGRectGetMaxY(resetBtn.frame)+20*SCALE, 70*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:@"黑子:" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentLeft andFont:[UIFont systemFontOfSize:25*SCALE]];
+    [self.view addSubview:blackPlayerTipsLB];
+    
+    MZLabel *blackPlayerLB = [[MZLabel alloc] initWithFrame:CGRectMake(90*SCALE, CGRectGetMaxY(resetBtn.frame)+20*SCALE, SCREEN_W-250*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:self.isWhiteChess?[MZBluetoothManager shareManager].competitor:@"本人" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentLeft andFont:[UIFont systemFontOfSize:25*SCALE]];
+    blackPlayerLB.adjustsFontSizeToFitWidth = YES;
+    [self.view addSubview:blackPlayerLB];
+    self.blackPlayerLB = blackPlayerLB;
+    
+    MZLabel *blackChessCountLB = [[MZLabel alloc] initWithFrame:CGRectMake(SCREEN_W-150*SCALE, CGRectGetMaxY(resetBtn.frame)+20*SCALE, 130*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:@"落子数:0" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentLeft andFont:[UIFont systemFontOfSize:25*SCALE]];
+    [self.view addSubview:blackChessCountLB];
+    self.blackChessCountLB = blackChessCountLB;
+    
+    
+    //白子方信息
+    MZLabel *whitePlayerTipsLB = [[MZLabel alloc] initWithFrame:CGRectMake(20*SCALE, CGRectGetMaxY(resetBtn.frame)+60*SCALE, 70*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:@"白子:" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentLeft andFont:[UIFont systemFontOfSize:25*SCALE]];
+    [self.view addSubview:whitePlayerTipsLB];
+    
+    MZLabel *whitePlayerLB = [[MZLabel alloc] initWithFrame:CGRectMake(90*SCALE, CGRectGetMaxY(resetBtn.frame)+60*SCALE, SCREEN_W-250*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:self.isWhiteChess?@"本人":@"暂无" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentLeft andFont:[UIFont systemFontOfSize:25*SCALE]];
+    whitePlayerLB.adjustsFontSizeToFitWidth = YES;
+    [self.view addSubview:whitePlayerLB];
+    self.whitePlayerLB = whitePlayerLB;
+    
+    MZLabel *whiteChessCountLB = [[MZLabel alloc] initWithFrame:CGRectMake(SCREEN_W-150*SCALE, CGRectGetMaxY(resetBtn.frame)+60*SCALE, 130*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:@"落子数:0" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentLeft andFont:[UIFont systemFontOfSize:25*SCALE]];
+    [self.view addSubview:whiteChessCountLB];
+    self.whiteChessCountLB = whiteChessCountLB;
+
+    
+    //落子方
+    self.resultLB = [[MZLabel alloc] initWithFrame:CGRectMake(30*SCALE, CGRectGetMaxY(resetBtn.frame)+100*SCALE, SCREEN_W-60*SCALE, 30*SCALE) andbackgroundColor:[UIColor clearColor] andText:@"对局结果：该黑子落子" andTextColor:[UIColor blackColor] andTextAlignment:NSTextAlignmentCenter andFont:[UIFont systemFontOfSize:25*SCALE]];
+    [self.view addSubview:self.resultLB];
     
     //开启图像上下文
     UIGraphicsBeginImageContext(CGSizeMake(SCREEN_W-60, SCREEN_W-60));
@@ -88,6 +171,18 @@
 
 //点击棋盘落子
 - (void)locationChess:(UITapGestureRecognizer *)tap {
+    if ([[MZBluetoothManager shareManager] isCentral]&&!self.hasFriendJoined) {
+        [MBProgressHUD showError:@"还未有对手加入游戏，暂不能开始游戏"];
+        return;
+    }
+    if (self.isFinished) {
+        [MBProgressHUD showError:@"对局已结束，请重开"];
+        return;
+    }
+    if (!self.isMeStep) {
+        [MBProgressHUD showError:@"该对手落子"];
+        return;
+    }
     CGPoint point = [tap locationInView:tap.view];
     //计算下子的行列号
     NSInteger xPoint = point.x/((SCREEN_W-60)/15.0)+0.5;
@@ -116,20 +211,38 @@
     if (CGColorEqualToColor(chessColor.CGColor, [UIColor whiteColor].CGColor)) {
         if ([self checkResultWithXPoint:xPoint yPoint:yPoint chessColor:[UIColor whiteColor]]) {
             [MBProgressHUD showError:@"白子方胜利"];
-            self.chessView.userInteractionEnabled = NO;
             self.isFinished = YES;
         }
     } else {
         if ([self checkResultWithXPoint:xPoint yPoint:yPoint chessColor:[UIColor blackColor]]) {
             [MBProgressHUD showError:@"黑子方胜利"];
-            self.chessView.userInteractionEnabled = NO;
             self.isFinished = YES;
         }
     }
     if (writeData) {
-        self.chessView.userInteractionEnabled = NO;
+        self.isMeStep = NO;
         [[MZBluetoothManager shareManager] writeData:[NSString stringWithFormat:@"%d-%ld-%ld",self.isWhiteChess?1:0,xPoint,yPoint]];
     }
+    
+    [self updatePlayerImformation];
+}
+
+- (void)updatePlayerImformation {
+    NSInteger count = self.chessDic.allKeys.count;
+    if (count % 2 == 0) {
+        self.blackPlayerLB.text = self.isWhiteChess?[MZBluetoothManager shareManager].competitor:@"本人";
+        self.blackChessCountLB.text = [NSString stringWithFormat:@"落子数:%ld",count/2];
+        self.whitePlayerLB.text = self.isWhiteChess?@"本人":[MZBluetoothManager shareManager].competitor;
+        self.whiteChessCountLB.text = [NSString stringWithFormat:@"落子数:%ld",count/2];
+        self.resultLB.text = [NSString stringWithFormat:@"对局结果：%@",self.isFinished?@"白子胜":@"该黑子落子"];
+    } else {
+        self.blackPlayerLB.text = self.isWhiteChess?[MZBluetoothManager shareManager].competitor:@"本人";
+        self.blackChessCountLB.text = [NSString stringWithFormat:@"落子数:%ld",count/2+1];
+        self.whitePlayerLB.text = self.isWhiteChess?@"本人":[MZBluetoothManager shareManager].competitor;
+        self.whiteChessCountLB.text = [NSString stringWithFormat:@"落子数:%ld",count/2];
+        self.resultLB.text = [NSString stringWithFormat:@"对局结果：%@",self.isFinished?@"黑子胜":@"该白子落子"];
+    }
+    
 }
 
 //是否有玩家胜利
@@ -265,11 +378,11 @@
         [MBProgressHUD showError:@"一次只能悔棋一步"];
         return;
     }
-    if (self.chessView.userInteractionEnabled) {
+    if (self.isMeStep) {
         [MBProgressHUD showError:@"您正处于落子方，不能悔棋"];
     } else {
         [[MZBluetoothManager shareManager] writeData:@"backLastStep"];
-        [MBProgressHUD showSuccess:@"悔棋请求已发送,请等待对方确认"];
+        [MBProgressHUD showSuccess:@"悔棋请求已发送,请等待对手确认"];
     }
 }
 
@@ -279,6 +392,7 @@
     [self.chessDic removeObjectForKey:self.lastKey];
     self.lastKey = nil;
     self.lastView = nil;
+    [self updatePlayerImformation];
 }
 
 //发起重开游戏的请求
@@ -287,7 +401,7 @@
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"该局输赢未定，请问您是否确认重开？" preferredStyle:UIAlertControllerStyleAlert];
         UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"确认" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             [[MZBluetoothManager shareManager] writeData:@"resetMatch"];
-            [MBProgressHUD showSuccess:@"已发送重开请求给对方，请等待对方确认"];
+            [MBProgressHUD showSuccess:@"已发送重开请求给对手，请等待对手确认"];
         }];
         [alert addAction:okAction];
         UIAlertAction *noAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
@@ -295,31 +409,35 @@
         }];
         [alert addAction:noAction];
         [self presentViewController:alert animated:YES completion:nil];
+    } else {
+        [[MZBluetoothManager shareManager] writeData:@"resetMatch"];
+        [MBProgressHUD showSuccess:@"已发送重开请求给对手，请等待对手确认"];
     }
 }
 
 //确认重开游戏，更新UI
 - (void)resetMatch {
+    self.isFinished = NO;
     [self.chessDic removeAllObjects];
     self.lastKey = nil;
     self.lastView = nil;
-    self.chessView.userInteractionEnabled = YES;
     for (UIView *subView in self.chessView.subviews) {
         [subView removeFromSuperview];
     }
+    [self updatePlayerImformation];
 }
 
 #pragma mark -MZBluetoothManagerDelegate
-//获取对方发送的指令
+//获取对手发送的指令
 - (void)getData:(NSString *)data {
     if ([data isEqualToString:@"backLastStep"]) {
-        //收到对方请求悔棋指令
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"对方请求悔棋，是否同意？" preferredStyle:UIAlertControllerStyleAlert];
+        //收到对手请求悔棋指令
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"对手请求悔棋，是否同意？" preferredStyle:UIAlertControllerStyleAlert];
         UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"同意" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             [self backLastStep];
-            self.chessView.userInteractionEnabled = NO;
+            self.isMeStep = NO;
             [[MZBluetoothManager shareManager] writeData:@"backLastStepYes"];
-            [MBProgressHUD showSuccess:@"您已同意悔棋，该对方落子"];
+            [MBProgressHUD showSuccess:@"您已同意悔棋，该对手落子"];
         }];
         [alert addAction:okAction];
         UIAlertAction *noAction = [UIAlertAction actionWithTitle:@"不同意" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
@@ -330,19 +448,21 @@
         [self presentViewController:alert animated:YES completion:nil];
         return;
     } else if ([data isEqualToString:@"backLastStepYes"]) {
-        //收到对方同意悔棋的指令
-        [MBProgressHUD showSuccess:@"对方已同意悔棋，请您落子"];
+        //收到对手同意悔棋的指令
+        [MBProgressHUD showSuccess:@"对手已同意悔棋，请您落子"];
         [self backLastStep];
-        self.chessView.userInteractionEnabled = YES;
+        self.isMeStep = YES;
         return;
     } else if ([data isEqualToString:@"backLastStepNo"]) {
-        //收到对方不同意悔棋的指令
-        [MBProgressHUD showSuccess:@"呜～,对方不同意悔棋，依旧由对方落子"];
+        //收到对手不同意悔棋的指令
+        [MBProgressHUD showSuccess:@"呜～,对手不同意悔棋，依旧由对手落子"];
         return;
     } else if ([data isEqualToString:@"resetMatch"]) {
-        //收到对方请求重开游戏的指令
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"对方请求重开游戏，请问您同意吗？" preferredStyle:UIAlertControllerStyleAlert];
+        //收到对手请求重开游戏的指令
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"对手请求重开游戏，请问您同意吗？" preferredStyle:UIAlertControllerStyleAlert];
         UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"同意" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            self.isWhiteChess = !self.isWhiteChess;
+            self.isMeStep = !self.isWhiteChess;
             [self resetMatch];
             [[MZBluetoothManager shareManager] writeData:@"resetMatchYes"];
             [MBProgressHUD showSuccess:@"游戏已重开，双方交换棋色，由黑子先落子"];
@@ -355,18 +475,46 @@
         [self presentViewController:alert animated:YES completion:nil];
         return;
     } else if ([data isEqualToString:@"resetMatchYes"]) {
-        //收到对方同意重开游戏的指令
+        //收到对手同意重开游戏的指令
+        self.isWhiteChess = !self.isWhiteChess;
+        self.isMeStep = !self.isWhiteChess;
         [self resetMatch];
-        [MBProgressHUD showSuccess:@"对方已同意游戏重开，双方交换棋色，由黑子先落子"];
+        [MBProgressHUD showSuccess:@"对手已同意游戏重开，双方交换棋色，由黑子先落子"];
         return;
     } else if ([data isEqualToString:@"resetMatchNo"]) {
-        //收到对方不同意重开游戏的指令
-        [MBProgressHUD showSuccess:@"对方不同意重开游戏，请继续游戏"];
+        //收到对手不同意重开游戏的指令
+        [MBProgressHUD showSuccess:@"对手不同意重开游戏，请继续游戏"];
+        return;
+    } else if ([data hasPrefix:@"beginGame"]) {
+        //收到对手进入房间的指令
+        [[MZBluetoothManager shareManager] setCompetitor:[data substringFromIndex:9]];
+        [self updatePlayerImformation];
+        self.hasFriendJoined = YES;
+        [MBProgressHUD showSuccess:@"对手已进入房间，游戏开始，请黑子先落子"];
+        return;
+    } else if ([data isEqualToString:@"leaveRoom"]) {
+        //收到对手离开房间的指令
+        self.hasFriendJoined = NO;
+        [MBProgressHUD showError:@"对手已离开房间，本局游戏结束"];
+        if (![[MZBluetoothManager shareManager] isCentral]) {
+            [[MZBluetoothManager shareManager] disConnect];
+            self.view.userInteractionEnabled = NO;
+            [self performSelector:@selector(back) withObject:nil afterDelay:2.0f];
+        } else {
+            self.isWhiteChess = NO;
+            self.isMeStep = YES;
+            [self resetMatch];
+            [[MZBluetoothManager shareManager] startAdvitise];
+        }
         return;
     }
-    self.chessView.userInteractionEnabled = YES;
+    self.isMeStep = YES;
     NSArray *arr = [data componentsSeparatedByString:@"-"];
     [self updateChessViewWithChessColor:[arr[0] isEqualToString:@"1"]?[UIColor whiteColor]:[UIColor blackColor] xpoint:[arr[1] integerValue] yPoint:[arr[2] integerValue] writeData:NO];
+}
+
+- (void)back {
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 @end

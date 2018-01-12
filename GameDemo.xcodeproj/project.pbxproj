@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6AF7BA072006FD4D00AC2015 /* NSObject+Tool.m in Sources */ = {isa = PBXBuildFile; fileRef = 6AF7BA062006FD4D00AC2015 /* NSObject+Tool.m */; };
 		71E5192F1EA9AC13008BE329 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 71E5192E1EA9AC13008BE329 /* main.m */; };
 		71E519321EA9AC13008BE329 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 71E519311EA9AC13008BE329 /* AppDelegate.m */; };
 		71E5193A1EA9AC13008BE329 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 71E519391EA9AC13008BE329 /* Assets.xcassets */; };
@@ -26,6 +27,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		6AF7BA052006FD4D00AC2015 /* NSObject+Tool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSObject+Tool.h"; sourceTree = "<group>"; };
+		6AF7BA062006FD4D00AC2015 /* NSObject+Tool.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSObject+Tool.m"; sourceTree = "<group>"; };
 		71E5192A1EA9AC13008BE329 /* GameDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		71E5192E1EA9AC13008BE329 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		71E519301EA9AC13008BE329 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
@@ -154,6 +157,8 @@
 				71E5195C1EA9B604008BE329 /* MZButton.m */,
 				71E5195D1EA9B604008BE329 /* MZLabel.h */,
 				71E5195E1EA9B604008BE329 /* MZLabel.m */,
+				6AF7BA052006FD4D00AC2015 /* NSObject+Tool.h */,
+				6AF7BA062006FD4D00AC2015 /* NSObject+Tool.m */,
 			);
 			name = Thirdparty;
 			sourceTree = "<group>";
@@ -252,6 +257,7 @@
 				71E519711EACD31F008BE329 /* MBProgressHUD+MJ.m in Sources */,
 				71E5195F1EA9B604008BE329 /* MZButton.m in Sources */,
 				71E519791EACD338008BE329 /* README.mdown in Sources */,
+				6AF7BA072006FD4D00AC2015 /* NSObject+Tool.m in Sources */,
 				71E519591EA9B55C008BE329 /* MZGameRoomModel.m in Sources */,
 				71E519601EA9B604008BE329 /* MZLabel.m in Sources */,
 			);
