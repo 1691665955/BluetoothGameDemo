@@ -364,6 +364,11 @@
 
 //发起悔棋的请求
 - (void)backLastStepRequest {
+    if ([[MZBluetoothManager shareManager] isCentral]&&!self.hasFriendJoined) {
+        [MBProgressHUD showError:@"游戏尚未开始,不能悔棋"];
+        return;
+    }
+    
     if (self.chessDic.allKeys.count == 0) {
         [MBProgressHUD showError:@"请先下子"];
         return;
@@ -397,6 +402,11 @@
 
 //发起重开游戏的请求
 - (void)requestResetMatch {
+    if ([[MZBluetoothManager shareManager] isCentral]&&!self.hasFriendJoined) {
+        [MBProgressHUD showError:@"游戏尚未开始,不能重开游戏"];
+        return;
+    }
+    
     if (!self.isFinished) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"该局输赢未定，请问您是否确认重开？" preferredStyle:UIAlertControllerStyleAlert];
         UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"确认" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
